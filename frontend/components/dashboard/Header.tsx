@@ -1,6 +1,6 @@
 export default function AdminHeader({ title }: { title?: string }) {
   return (
-    <header className="flex h-16 items-center justify-between border-b border-white/10 bg-slate-900/80 px-6 backdrop-blur">
+    <header className="flex h-16 items-center justify-between border-b border-white/10 bg-black px-6 backdrop-blur">
       {/* Page title */}
       <h1 className="text-sm font-semibold text-white">
         {title ?? "Dashboard"}

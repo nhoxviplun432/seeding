@@ -1,8 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
 from sqlalchemy import func
+from sqlalchemy.orm import Session
+
+from app.api.deps import get_current_user
 from app.database import get_db
 from app.models.analytics import VideoAnalytics
+from app.models.user import User
 from app.models.video import Video
 from app.schemas.analytics import AnalyticsResponse, AnalyticsSummary
 
@@ -10,9 +13,12 @@ router = APIRouter()
 
 
 @router.get("/video/{video_id}", response_model=AnalyticsSummary)
-async def get_video_analytics(video_id: int, db: Session = Depends(get_db)):
-    video = db.query(Video).filter(Video.id == video_id).first()
-    if not video:
+async def get_video_analytics(
+    video_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    if not db.query(Video).filter(Video.id == video_id).first():
         raise HTTPException(404, "Video not found")
 
     data_points = (
@@ -26,7 +32,7 @@ async def get_video_analytics(video_id: int, db: Session = Depends(get_db)):
         return AnalyticsSummary(
             video_id=video_id,
             total_views=0, total_likes=0, total_shares=0,
-            total_comments=0, total_reach=0, data_points=[]
+            total_comments=0, total_reach=0, data_points=[],
         )
 
     agg = db.query(
@@ -49,11 +55,14 @@ async def get_video_analytics(video_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/campaign/{campaign_id}", response_model=list[AnalyticsResponse])
-async def get_campaign_analytics(campaign_id: int, db: Session = Depends(get_db)):
-    rows = (
+async def get_campaign_analytics(
+    campaign_id: int,
+    db: Session = Depends(get_db),
+    _: User = Depends(get_current_user),
+):
+    return (
         db.query(VideoAnalytics)
         .filter(VideoAnalytics.campaign_id == campaign_id)
         .order_by(VideoAnalytics.collected_at.desc())
         .all()
     )
-    return rows

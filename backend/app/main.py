@@ -1,26 +1,35 @@
+import os
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
 from app.config import settings
-from app.database import Base, engine
-from app.api import videos, campaigns, analytics
+from routes import router as app_router
 
-Base.metadata.create_all(bind=engine)
-
-app = FastAPI(title="Facebook Seeding Platform")
+app = FastAPI(
+    title="Facebook Seeding Platform",
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(videos.router,    prefix="/api/videos",    tags=["videos"])
-app.include_router(campaigns.router, prefix="/api/campaigns", tags=["campaigns"])
-app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
+app.include_router(app_router)
+
+# Static file serving — create dir before mounting
+upload_dir = Path(settings.UPLOAD_DIR)
+upload_dir.mkdir(parents=True, exist_ok=True)
+app.mount("/uploads", StaticFiles(directory=str(upload_dir)), name="uploads")
 
 
-@app.get("/")
+@app.get("/", tags=["health"])
 def root():
     return {"message": "Facebook Seeding Platform API", "docs": "/docs"}

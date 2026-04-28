@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import AppLogo from "@/components/AppLogo";
 
 const NAV_ITEMS = [
   {
     label: "Dashboard",
-    href: "/admin",
+    href: "/",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -15,18 +16,8 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Phân tích",
-    href: "/admin/analyses",
-    icon: (
-      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-      </svg>
-    ),
-  },
-  {
     label: "Người dùng",
-    href: "/admin/users",
+    href: "/users",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -35,18 +26,38 @@ const NAV_ITEMS = [
     ),
   },
   {
-    label: "Nội dung",
-    href: "/admin/content",
+    label: "Phân tích",
+    href: "/analytics",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+      </svg>
+    ),
+  },
+  {
+    label: "Chiến dịch",
+    href: "/campaigns",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+          d="M3 21v-4m0 0V5a2 2 0 012-2h6.5l1 1H21l-3 6 3 6H11l-1-1H5a2 2 0 00-2 2zm9-13.5V9" />
+      </svg>
+    ),
+  },
+  {
+    label: "Video",
+    href: "/videos",
+    icon: (
+      <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+          d="M15 10l4.553-2.277A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M3 8a2 2 0 012-2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2V8z" />
       </svg>
     ),
   },
   {
     label: "Cài đặt",
-    href: "/admin/settings",
+    href: "/settings",
     icon: (
       <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
@@ -61,15 +72,10 @@ export default function AdminSidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="flex h-screen w-64 flex-col border-r border-white/10 bg-slate-900">
+    <aside className="flex h-screen w-64 flex-col border-r border-white/10 bg-black z-30">
       {/* Logo */}
-      <div className="flex h-16 items-center gap-2 border-b border-white/10 px-6">
-        <span className="bg-gradient-to-r from-fuchsia-400 to-indigo-400 bg-clip-text text-base font-bold text-transparent">
-          VGTech MD
-        </span>
-        <span className="rounded-full bg-fuchsia-500/20 px-2 py-0.5 text-xs font-semibold text-fuchsia-300">
-          Admin
-        </span>
+      <div className="flex h-16 items-center border-b border-white/10 px-6">
+        <AppLogo size="sm" />
       </div>
 
       {/* Nav */}
@@ -77,7 +83,7 @@ export default function AdminSidebar() {
         <ul className="space-y-1">
           {NAV_ITEMS.map(({ label, href, icon }) => {
             const isActive =
-              href === "/admin" ? pathname === "/admin" : pathname.startsWith(href);
+              href === "/" ? pathname === "/" : pathname.startsWith(href);
             return (
               <li key={href}>
                 <Link

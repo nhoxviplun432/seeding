@@ -1,53 +1,47 @@
-from celery import Celery
-from app.config import settings
+import logging
+
 from app.database import SessionLocal
 from app.models.video import Video, VideoStatus
 from app.services.facebook import facebook_service
-import logging
+from app.tasks.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-celery_app = Celery(
-    "seeding_tasks",
-    broker=settings.CELERY_BROKER_URL,
-    backend=settings.CELERY_RESULT_BACKEND
-)
 
-@celery_app.task(bind=True, max_retries=3)
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=60)
 def process_and_upload_video(self, video_id: int):
-    """Background task to upload video to Facebook"""
     db = SessionLocal()
-    
+    video = None
     try:
         video = db.query(Video).filter(Video.id == video_id).first()
         if not video:
-            raise Exception(f"Video {video_id} not found")
-        
-        # Update status
+            raise ValueError(f"Video {video_id} not found")
+
         video.status = VideoStatus.PROCESSING
         db.commit()
-        
-        # Upload to Facebook
+
         result = facebook_service.upload_video(
             video_path=video.file_path,
             title=video.title,
             description=video.description or "",
-            tags=video.tags or []
+            tags=video.tags or [],
         )
-        
-        if result['success']:
-            video.facebook_video_id = result['video_id']
+
+        if result["success"]:
+            video.facebook_video_id = result["video_id"]
             video.status = VideoStatus.PUBLISHED
         else:
             video.status = VideoStatus.FAILED
-        
+            logger.error("Facebook upload failed for video %d: %s", video_id, result.get("error"))
+
         db.commit()
         return result
-        
-    except Exception as e:
-        logger.error(f"Error: {e}")
-        video.status = VideoStatus.FAILED
-        db.commit()
-        raise self.retry(exc=e, countdown=60)
+
+    except Exception as exc:
+        logger.exception("Task failed for video %d", video_id)
+        if video is not None:
+            video.status = VideoStatus.FAILED
+            db.commit()
+        raise self.retry(exc=exc)
     finally:
         db.close()

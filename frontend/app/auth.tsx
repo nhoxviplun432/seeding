@@ -1,27 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { getMe } from "@/lib/auth";
 
 export default function AuthGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [checked, setChecked] = useState(false);
+  // Persist auth result across navigations — don't re-verify on every route change
+  const verified = useRef(false);
 
   useEffect(() => {
-    if (pathname === "/auth") {
+    if (verified.current) {
       setChecked(true);
       return;
     }
     getMe().then((user) => {
       if (!user) {
-        router.replace("/auth");
+        router.replace("/auth/login");
       } else {
+        verified.current = true;
         setChecked(true);
       }
     });
-  }, [router, pathname]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!checked) {
     return (

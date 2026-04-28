@@ -7,10 +7,16 @@ logger = logging.getLogger(__name__)
 
 class FacebookService:
     def __init__(self):
-        self.graph = facebook.GraphAPI(
-            access_token=settings.FACEBOOK_PAGE_ACCESS_TOKEN,
-            version=settings.FACEBOOK_API_VERSION
-        )
+        self.graph: Optional[facebook.GraphAPI] = None
+
+    def _get_graph(self) -> facebook.GraphAPI:
+        if self.graph is None:
+            version = settings.FACEBOOK_API_VERSION.lstrip("v")
+            self.graph = facebook.GraphAPI(
+                access_token=settings.FACEBOOK_PAGE_ACCESS_TOKEN,
+                version=version,
+            )
+        return self.graph
     
     def upload_video(
         self,
@@ -34,7 +40,7 @@ class FacebookService:
                 params['published'] = False
             
             with open(video_path, 'rb') as video_file:
-                response = self.graph.put_video(video=video_file, **params)
+                response = self._get_graph().put_video(video=video_file, **params)
             
             return {
                 'success': True,
@@ -48,7 +54,7 @@ class FacebookService:
     def get_video_insights(self, video_id: str, metrics: list):
         """Get video analytics"""
         try:
-            insights = self.graph.get_object(
+            insights = self._get_graph().get_object(
                 id=f"{video_id}/video_insights",
                 metric=','.join(metrics)
             )
@@ -63,7 +69,7 @@ class FacebookService:
             if video_id:
                 params['video_id'] = video_id
             
-            response = self.graph.put_object(
+            response = self._get_graph().put_object(
                 parent_object=group_id,
                 connection_name="feed",
                 **params
