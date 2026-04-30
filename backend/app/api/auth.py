@@ -44,6 +44,7 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     password: str
     password_confirmation: str
+    account_type: Optional[str] = None
 
 
 class LoginRequest(BaseModel):
@@ -56,6 +57,7 @@ class UserOut(BaseModel):
     fullname: str
     email: str
     role: str
+    account_type: Optional[str] = None
     avatar_url: Optional[str] = None
     is_active: bool = True
     parent_id: Optional[int] = None
@@ -90,13 +92,19 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
     if db.query(User).filter(User.email == body.email).first():
         raise HTTPException(400, "Email already registered")
 
-    from app.models.user import UserRole
+    from app.models.user import UserRole, ACCOUNT_TYPES
     is_first = db.query(User).count() == 0
+
+    resolved_type: Optional[str] = None
+    if not is_first and body.account_type in ACCOUNT_TYPES:
+        resolved_type = body.account_type
+
     user = User(
         fullname=body.fullname.strip(),
         email=body.email,
         hashed_password=_hash(body.password),
         role=UserRole.SUPER_ADMIN if is_first else UserRole.MEMBER,
+        account_type=resolved_type,
     )
     db.add(user)
     db.commit()

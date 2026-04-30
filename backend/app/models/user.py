@@ -15,6 +15,9 @@ class UserRole(str, enum.Enum):
     MEMBER      = "member"
 
 
+ACCOUNT_TYPES = ("personal", "company")
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -28,6 +31,7 @@ class User(Base):
         nullable=False,
         default=UserRole.MEMBER,
     )
+    account_type    = Column(String(20), nullable=True, default=None)
     is_active       = Column(Boolean, default=True)
     parent_id       = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
 

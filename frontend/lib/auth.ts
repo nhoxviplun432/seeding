@@ -1,9 +1,13 @@
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8000/api";
 
+export type AccountType = "personal" | "company";
+
 export interface AuthUser {
   id: number;
   fullname: string;
   email: string;
+  role: string;
+  account_type: AccountType | null;
   avatar_url?: string | null;
 }
 
@@ -50,11 +54,12 @@ export async function register(
   fullname: string,
   email: string,
   password: string,
-  password_confirmation: string
+  password_confirmation: string,
+  account_type: AccountType,
 ): Promise<AuthUser> {
   const data = await apiFetch<{ user: AuthUser; token: string }>("/auth/register", {
     method: "POST",
-    body: JSON.stringify({ fullname, email, password, password_confirmation }),
+    body: JSON.stringify({ fullname, email, password, password_confirmation, account_type }),
   });
   setToken(data.token);
   return data.user;

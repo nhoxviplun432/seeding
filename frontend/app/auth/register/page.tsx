@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { register } from "@/lib/auth";
+import { register, type AccountType } from "@/lib/auth";
 import { ErrorMsg } from "@/components/package/ErrorMsg";
 
 function isValidEmail(v: string) {
@@ -58,15 +58,16 @@ function GoogleIcon() {
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [fullName, setFullName]   = useState("");
-  const [email, setEmail]         = useState("");
-  const [password, setPassword]   = useState("");
-  const [confirmPw, setConfirmPw] = useState("");
-  const [showPw, setShowPw]       = useState(false);
-  const [showCPw, setShowCPw]     = useState(false);
-  const [loading, setLoading]     = useState(false);
-  const [apiError, setApiError]   = useState<string | null>(null);
-  const [touched, setTouched]     = useState<{
+  const [fullName, setFullName]       = useState("");
+  const [email, setEmail]             = useState("");
+  const [password, setPassword]       = useState("");
+  const [confirmPw, setConfirmPw]     = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("personal");
+  const [showPw, setShowPw]           = useState(false);
+  const [showCPw, setShowCPw]         = useState(false);
+  const [loading, setLoading]         = useState(false);
+  const [apiError, setApiError]       = useState<string | null>(null);
+  const [touched, setTouched]         = useState<{
     fullName?: boolean; email?: boolean; password?: boolean; confirmPw?: boolean;
   }>({});
 
@@ -113,7 +114,7 @@ export default function RegisterPage() {
 
     setLoading(true);
     try {
-      await register(fullName.trim(), email, password, confirmPw);
+      await register(fullName.trim(), email, password, confirmPw, accountType);
       router.replace("/");
     } catch (err: unknown) {
       setApiError(err instanceof Error ? err.message : "Đăng ký thất bại.");
@@ -125,7 +126,7 @@ export default function RegisterPage() {
   return (
     <>
       <h2 className="text-xl font-bold text-white mb-1">Tạo tài khoản</h2>
-      <p className="text-sm text-gray-400 mb-6">Bắt đầu hành trình khám phá bản thân</p>
+      <p className="text-sm text-gray-400 mb-6">Mở rộng marketing từ mạng xã hội của bạn</p>
 
       {apiError && (
         <div className="mb-4 rounded-lg bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -188,6 +189,35 @@ export default function RegisterPage() {
             </button>
           </div>
           <ErrorMsg msg={errors.confirmPw} />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-gray-400 mb-2">Loại tài khoản</label>
+          <div className="grid grid-cols-2 gap-2">
+            {([
+              { value: "personal", label: "Cá nhân", desc: "Dùng cho bản thân", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
+              { value: "company",  label: "Doanh nghiệp", desc: "Dùng cho nhóm/công ty", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
+            ] as const).map(({ value, label, desc, icon }) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setAccountType(value)}
+                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                  accountType === value
+                    ? "border-fuchsia-500/50 bg-fuchsia-500/10"
+                    : "border-white/10 bg-white/5 hover:bg-white/[0.08]"
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <svg className={`h-4 w-4 ${accountType === value ? "text-fuchsia-300" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={icon} />
+                  </svg>
+                  <span className={`text-sm font-medium ${accountType === value ? "text-fuchsia-300" : "text-white"}`}>{label}</span>
+                </div>
+                <p className="text-[11px] text-slate-500 pl-6">{desc}</p>
+              </button>
+            ))}
+          </div>
         </div>
 
         <button type="submit" disabled={loading}

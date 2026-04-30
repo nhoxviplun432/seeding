@@ -19,6 +19,7 @@ class UserItem(BaseModel):
     fullname: str
     email: str
     role: str
+    account_type: Optional[str] = None
     is_active: bool
     parent_id: Optional[int] = None
     created_at: Optional[str] = None
@@ -32,6 +33,7 @@ class UserItem(BaseModel):
             fullname=obj.fullname,
             email=obj.email,
             role=obj.role.value if hasattr(obj.role, "value") else str(obj.role),
+            account_type=obj.account_type,
             is_active=obj.is_active,
             parent_id=obj.parent_id,
             created_at=obj.created_at.isoformat() if obj.created_at else None,
