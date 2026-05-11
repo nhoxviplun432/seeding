@@ -12,6 +12,11 @@ import type {
   SeedFriend, SeedFriendListResponse,
   CreateFriendPayload, BulkSyncPayload,
   FriendSyncStatus,
+  FbAccount, FbAccountListResponse,
+  CreateFbAccountPayload, UpdateFbAccountPayload,
+  LoginResult,
+  Proxy, ProxyListResponse,
+  CreateProxyPayload, UpdateProxyPayload,
 } from "./types";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
@@ -195,6 +200,84 @@ export interface FriendListParams {
   sync_status?: FriendSyncStatus | "all";
   account_id?: number;
 }
+
+// ── Facebook Accounts ──────────────────────────────────────────────────────────
+export interface FbAccountListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: FbAccount["status"] | "all";
+  account_type?: FbAccount["account_type"] | "all";
+}
+
+export const fbAccountAPI = {
+  list: async (params: FbAccountListParams = {}): Promise<FbAccountListResponse> => {
+    const res = await client.get<FbAccountListResponse>("/accounts/facebook/me", { params });
+    return res.data;
+  },
+  getById: async (id: number): Promise<FbAccount> => {
+    const res = await client.get<FbAccount>(`/accounts/facebook/me/${id}`);
+    return res.data;
+  },
+  create: async (payload: CreateFbAccountPayload): Promise<FbAccount> => {
+    const res = await client.post<FbAccount>("/accounts/facebook/me", payload);
+    return res.data;
+  },
+  update: async (id: number, payload: UpdateFbAccountPayload): Promise<FbAccount> => {
+    const res = await client.put<FbAccount>(`/accounts/facebook/me/${id}`, payload);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await client.delete(`/accounts/facebook/me/${id}`);
+  },
+  verify2fa: async (id: number): Promise<{ success: boolean; code: string }> => {
+    const res = await client.post<{ success: boolean; code: string }>(`/accounts/facebook/me/${id}/verify-2fa`);
+    return res.data;
+  },
+  login: async (id: number): Promise<LoginResult> => {
+    const res = await client.post<LoginResult>(`/accounts/facebook/me/${id}/login`);
+    return res.data;
+  },
+};
+
+// ── Proxies ────────────────────────────────────────────────────────────────────
+export interface ProxyListParams {
+  page?: number;
+  page_size?: number;
+  search?: string;
+  status?: Proxy["status"] | "all";
+  protocol?: Proxy["protocol"] | "all";
+}
+
+export const proxyAPI = {
+  list: async (params: ProxyListParams = {}): Promise<ProxyListResponse> => {
+    const res = await client.get<ProxyListResponse>("/proxies/", { params });
+    return res.data;
+  },
+  getById: async (id: number): Promise<Proxy> => {
+    const res = await client.get<Proxy>(`/proxies/${id}`);
+    return res.data;
+  },
+  create: async (payload: CreateProxyPayload): Promise<Proxy> => {
+    const res = await client.post<Proxy>("/proxies/", payload);
+    return res.data;
+  },
+  update: async (id: number, payload: UpdateProxyPayload): Promise<Proxy> => {
+    const res = await client.patch<Proxy>(`/proxies/${id}`, payload);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await client.delete(`/proxies/${id}`);
+  },
+  check: async (id: number): Promise<{ status: Proxy["status"]; latency_ms: number | null }> => {
+    const res = await client.post<{ status: Proxy["status"]; latency_ms: number | null }>(`/proxies/${id}/check`);
+    return res.data;
+  },
+  rotate: async (id: number): Promise<{ new_ip: string }> => {
+    const res = await client.post<{ new_ip: string }>(`/proxies/${id}/rotate`);
+    return res.data;
+  },
+};
 
 export const friendAPI = {
   list: async (params: FriendListParams = {}): Promise<SeedFriendListResponse> => {

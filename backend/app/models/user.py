@@ -53,3 +53,10 @@ class User(Base):
         foreign_keys=lambda: [User.parent_id],
         lazy="dynamic",
     )
+
+    social_accounts = relationship(
+        "SocialAccount",
+        back_populates="owner",
+        cascade="all, delete-orphan",
+        lazy="dynamic",
+    )

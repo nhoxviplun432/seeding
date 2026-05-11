@@ -195,24 +195,32 @@ export default function RegisterPage() {
           <label className="block text-xs font-medium text-gray-400 mb-2">Loại tài khoản</label>
           <div className="grid grid-cols-2 gap-2">
             {([
-              { value: "personal", label: "Cá nhân", desc: "Dùng cho bản thân", icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" },
-              { value: "company",  label: "Doanh nghiệp", desc: "Dùng cho nhóm/công ty", icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" },
-            ] as const).map(({ value, label, desc, icon }) => (
+              { value: "personal", label: "Personal",      desc: "Dùng cho cá nhân",       icon: "M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z",                                                                                                   disabled: false },
+              { value: "company",  label: "Company", desc: "Sắp ra mắt",              icon: "M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4", disabled: true  },
+            ] as const).map(({ value, label, desc, icon, disabled }) => (
               <button
                 key={value}
                 type="button"
-                onClick={() => setAccountType(value)}
-                className={`flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
-                  accountType === value
-                    ? "border-fuchsia-500/50 bg-fuchsia-500/10"
-                    : "border-white/10 bg-white/5 hover:bg-white/[0.08]"
+                disabled={disabled}
+                onClick={() => !disabled && setAccountType(value)}
+                className={`relative flex flex-col items-start gap-1 rounded-xl border p-3 text-left transition-colors ${
+                  disabled
+                    ? "cursor-not-allowed border-white/5 bg-white/[0.02] opacity-50"
+                    : accountType === value
+                      ? "border-fuchsia-500/50 bg-fuchsia-500/10"
+                      : "border-white/10 bg-white/5 hover:bg-white/[0.08]"
                 }`}
               >
                 <div className="flex items-center gap-2">
-                  <svg className={`h-4 w-4 ${accountType === value ? "text-fuchsia-300" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <svg className={`h-4 w-4 ${!disabled && accountType === value ? "text-fuchsia-300" : "text-slate-500"}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={icon} />
                   </svg>
-                  <span className={`text-sm font-medium ${accountType === value ? "text-fuchsia-300" : "text-white"}`}>{label}</span>
+                  <span className={`text-sm font-medium ${!disabled && accountType === value ? "text-fuchsia-300" : disabled ? "text-slate-600" : "text-white"}`}>{label}</span>
+                  {disabled && (
+                    <span className="ml-auto rounded-full bg-slate-700/60 px-1.5 py-0.5 text-[9px] font-medium text-slate-500 uppercase tracking-wide">
+                      Soon
+                    </span>
+                  )}
                 </div>
                 <p className="text-[11px] text-slate-500 pl-6">{desc}</p>
               </button>

@@ -2,6 +2,7 @@
 
 import AdminSidebar from "@/components/dashboard/Sidebar";
 import AdminHeader from "@/components/dashboard/Header";
+import Breadcrumb from "@/components/dashboard/Breadcrumb";
 import AuthGuard from "@/app/auth";
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -11,6 +12,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <AdminSidebar />
         <div className="flex flex-1 flex-col overflow-hidden">
           <AdminHeader />
+          <Breadcrumb />
           <main className="flex-1 overflow-y-auto p-6 relative z-10">
             <div className="pointer-events-none fixed inset-0 z-[1]">
               <div className="absolute -bottom-40 -right-40 h-[320px] w-[320px] rounded-full bg-indigo-500/20 blur-3xl" />
