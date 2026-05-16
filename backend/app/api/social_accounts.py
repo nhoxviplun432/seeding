@@ -144,18 +144,26 @@ async def login_account(
     """
     acc = _get_account_or_404(account_id, current_user.id, db)
 
-    if not acc.email or not acc.password:
-        raise HTTPException(400, "Account must have email and password set before login")
+    identifier = acc.email or acc.phone
+    if not identifier or not acc.password:
+        raise HTTPException(400, "Account must have (email or phone) and password set before login")
 
     from app.services.fb_login import login_facebook
+    from app.models.proxy import Proxy
 
     proxy_opts = None
-    # proxy relationship deferred until Proxy model exists
+    if acc.proxy_id:
+        proxy = db.query(Proxy).filter(Proxy.id == acc.proxy_id).first()
+        if proxy:
+            proxy_url = f"{proxy.protocol}://"
+            if proxy.username:
+                proxy_url += f"{proxy.username}:{proxy.password or ''}@"
+            proxy_url += f"{proxy.host}:{proxy.port}"
+            proxy_opts = {"server": proxy_url}
 
     result = await login_facebook(
-        email=acc.email,
+        identifier=identifier,
         password=acc.password,
-        two_fa_secret=acc.two_fa_secret,
         cookie=acc.cookie,
         user_agent=acc.user_agent,
         proxy=proxy_opts,
@@ -170,16 +178,19 @@ async def login_account(
             acc.avatar_url = result.avatar_url
         if result.cookie:
             acc.cookie = result.cookie
-        if result.session_data:
-            acc.session_data = result.session_data
+        acc.session_data   = None  # clear any pending 2FA state
         acc.status         = AccountStatus.ACTIVE
         acc.last_active_at = func.now()
-    else:
-        if result.step == "banned":
-            acc.status = AccountStatus.BANNED
-        elif result.step in ("checkpoint", "2fa"):
-            acc.status = AccountStatus.CHECKPOINT
-            acc.checkpoint_at = func.now()
+    elif result.step == "2fa":
+        # Preserve browser state for Phase 2 (verify-2fa)
+        acc.session_data  = result.session_data
+        acc.status        = AccountStatus.CHECKPOINT
+        acc.checkpoint_at = func.now()
+    elif result.step == "banned":
+        acc.status = AccountStatus.BANNED
+    elif result.step == "checkpoint":
+        acc.status        = AccountStatus.CHECKPOINT
+        acc.checkpoint_at = func.now()
 
     db.commit()
     db.refresh(acc)
@@ -195,20 +206,83 @@ async def login_account(
     )
 
 
-# ── Verify 2FA (manual OTP) ────────────────────────────────────────────────────
-@router.post("/me/{account_id}/verify-2fa")
-def verify_2fa(
+# ── Verify 2FA ────────────────────────────────────────────────────────────────
+class Verify2FABody(BaseModel):
+    code: str  # 6-digit OTP supplied by the user
+
+@router.post("/me/{account_id}/verify-2fa", response_model=LoginResult)
+async def verify_2fa(
     account_id:   int,
+    body:         Verify2FABody,
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ):
-    """Generate current TOTP code from stored secret."""
-    import pyotp
+    """
+    Phase 2 of the 2FA login flow.
+    Restores the Playwright session saved during /login, submits the OTP,
+    scrapes uid/name/avatar, and clears session_data on success.
+    """
     acc = _get_account_or_404(account_id, current_user.id, db)
-    if not acc.two_fa_secret:
-        raise HTTPException(400, "No 2FA secret configured for this account")
-    code = pyotp.TOTP(acc.two_fa_secret).now()
-    return {"success": True, "code": code}
+
+    if not acc.session_data:
+        raise HTTPException(400, "No pending 2FA session — please trigger /login first.")
+
+    if not body.code or len(body.code) != 6:
+        raise HTTPException(400, "OTP must be 6 digits.")
+
+    from app.services.fb_login import resume_2fa
+    from app.models.proxy import Proxy
+
+    proxy_opts = None
+    if acc.proxy_id:
+        proxy = db.query(Proxy).filter(Proxy.id == acc.proxy_id).first()
+        if proxy:
+            proxy_url = f"{proxy.protocol}://"
+            if proxy.username:
+                proxy_url += f"{proxy.username}:{proxy.password or ''}@"
+            proxy_url += f"{proxy.host}:{proxy.port}"
+            proxy_opts = {"server": proxy_url}
+
+    result = await resume_2fa(
+        session_data=acc.session_data,
+        otp_code=body.code,
+        user_agent=acc.user_agent,
+        proxy=proxy_opts,
+    )
+
+    if result.success:
+        if result.uid:
+            acc.uid = result.uid
+        if result.name:
+            acc.name = result.name
+        if result.avatar_url:
+            acc.avatar_url = result.avatar_url
+        if result.cookie:
+            acc.cookie = result.cookie
+        acc.session_data   = None  # clear pending state
+        acc.status         = AccountStatus.ACTIVE
+        acc.last_active_at = func.now()
+    elif result.step == "2fa":
+        # Wrong OTP — keep session_data so user can retry
+        acc.session_data = result.session_data
+    else:
+        # Session expired or other error — clear stale state
+        acc.session_data = None
+        if result.step == "error":
+            acc.status = AccountStatus.CHECKPOINT
+
+    db.commit()
+    db.refresh(acc)
+
+    return LoginResult(
+        success=result.success,
+        step=result.step,
+        message=result.message,
+        uid=result.uid,
+        name=result.name,
+        avatar_url=result.avatar_url,
+        status=acc.status,
+    )
 
 
 # ── Admin: accounts by any user ────────────────────────────────────────────────

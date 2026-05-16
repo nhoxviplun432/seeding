@@ -230,8 +230,11 @@ export const fbAccountAPI = {
   delete: async (id: number): Promise<void> => {
     await client.delete(`/accounts/facebook/me/${id}`);
   },
-  verify2fa: async (id: number): Promise<{ success: boolean; code: string }> => {
-    const res = await client.post<{ success: boolean; code: string }>(`/accounts/facebook/me/${id}/verify-2fa`);
+  verify2fa: async (id: number, code: string): Promise<LoginResult> => {
+    const res = await client.post<LoginResult>(
+      `/accounts/facebook/me/${id}/verify-2fa`,
+      { code },
+    );
     return res.data;
   },
   login: async (id: number): Promise<LoginResult> => {

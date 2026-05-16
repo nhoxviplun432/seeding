@@ -63,8 +63,7 @@ class SocialAccount(Base):
     access_token     = Column(Text,                    nullable=True)
     token_expires_at = Column(DateTime(timezone=True), nullable=True)
 
-    # proxy link (plain FK — no ORM relationship until Proxy model is defined)
-    proxy_id = Column(Integer, nullable=True)
+    proxy_id = Column(Integer, ForeignKey("proxies.id", ondelete="SET NULL"), nullable=True, index=True)
 
     status    = Column(
         Enum(AccountStatus, values_callable=lambda x: [e.value for e in x]),

@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { fbAccountAPI } from "@/lib/api";
-import type { FbAccount, FbAccountType, FbAccountStatus, CreateFbAccountPayload, UpdateFbAccountPayload, LoginStep } from "@/lib/types";
+import type { FbAccount, FbAccountType, FbAccountStatus, CreateFbAccountPayload, UpdateFbAccountPayload } from "@/lib/types";
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const PAGE_SIZE_OPTIONS = [10, 20, 50] as const;
@@ -111,10 +111,11 @@ function Modal({ title, subtitle, onClose, children, wide }: {
 }
 
 // ── 2FA Verify Modal ───────────────────────────────────────────────────────────
-function TwoFAModal({ account, onClose, onVerified }: {
-  account: FbAccount;
-  onClose: () => void;
-  onVerified: (acc: FbAccount) => void;
+function TwoFAModal({ account, accountId, onClose, onVerified }: {
+  account:    FbAccount;
+  accountId?: number;
+  onClose:    () => void;
+  onVerified: (result: LoginResult) => void;
 }) {
   const [code,    setCode]    = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
@@ -150,12 +151,17 @@ function TwoFAModal({ account, onClose, onVerified }: {
     if (full.length < 6) { setErr("Nhập đủ 6 chữ số."); return; }
     setLoading(true);
     setErr(null);
+    const id = accountId ?? account.id;
     try {
-      await fbAccountAPI.verify2fa(account.id);
+      const result = await fbAccountAPI.verify2fa(id, full);
+      if (!result.success) {
+        setErr(result.message || "Mã không đúng hoặc đã hết hạn. Thử lại.");
+        setCode(["", "", "", "", "", ""]);
+        inputs.current[0]?.focus();
+        return;
+      }
       setOk(true);
-      setTimeout(() => {
-        onVerified({ ...account, has_2fa: true, status: "active" });
-      }, 1000);
+      setTimeout(() => onVerified(result), 1000);
     } catch {
       setErr("Mã không đúng hoặc đã hết hạn. Thử lại.");
       setCode(["", "", "", "", "", ""]);
@@ -235,12 +241,181 @@ function TwoFAModal({ account, onClose, onVerified }: {
   );
 }
 
+// ── Login Progress Modal ───────────────────────────────────────────────────────
+import type { LoginResult } from "@/lib/types";
+
+const STEP_LABELS: Record<string, string> = {
+  idle:         "Chuẩn bị…",
+  starting:     "Khởi động trình duyệt…",
+  loading_page: "Mở trang Facebook…",
+  logging_in:   "Đang đăng nhập…",
+  "2fa":        "Xử lý xác thực 2FA…",
+  scraping:     "Lấy thông tin tài khoản…",
+  saving:       "Lưu session…",
+  done:         "Đăng nhập thành công!",
+  checkpoint:   "Tài khoản bị checkpoint.",
+  banned:       "Tài khoản bị khóa.",
+  error:        "Có lỗi xảy ra.",
+};
+
+function LoginProgressModal({ accountId, account, onClose, onDone }: {
+  accountId: number;
+  account?:  FbAccount;
+  onClose:   () => void;
+  onDone:    (result: LoginResult) => void;
+}) {
+  const [step,      setStep]      = useState<string>("idle");
+  const [result,    setResult]    = useState<LoginResult | null>(null);
+  const [loading,   setLoading]   = useState(false);
+  const [show2FA,   setShow2FA]   = useState(false);
+  const started = useRef(false);
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    run();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function run() {
+    setLoading(true);
+    setShow2FA(false);
+    setStep("starting");
+    try {
+      const res = await fbAccountAPI.login(accountId);
+      setStep(res.step ?? "done");
+      setResult(res);
+      if (res.step === "2fa") setShow2FA(true);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Lỗi không xác định";
+      setResult({ success: false, step: "error", message: msg });
+      setStep("error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handle2FAVerified(res: LoginResult) {
+    setShow2FA(false);
+    setStep("done");
+    setResult({ ...res, success: true, step: "done" });
+    onDone(res);
+  }
+
+  const isTerminal = result !== null;
+  const success    = result?.success ?? false;
+
+  const STEPS_ORDER = ["starting", "loading_page", "logging_in", "2fa", "scraping", "done"];
+
+  if (show2FA && account) {
+    return (
+      <TwoFAModal
+        account={account}
+        accountId={accountId}
+        onClose={() => setShow2FA(false)}
+        onVerified={handle2FAVerified}
+      />
+    );
+  }
+
+  return (
+    <Modal title="Đăng nhập Playwright" subtitle="Tự động login bằng trình duyệt ẩn danh" onClose={onClose}>
+      <div className="space-y-5">
+        {/* Progress steps */}
+        <div className="space-y-2">
+          {STEPS_ORDER.map((s) => {
+            const idx     = STEPS_ORDER.indexOf(s);
+            const curIdx  = STEPS_ORDER.indexOf(step);
+            const done    = idx < curIdx || (step === "done" && s === "done");
+            const active  = s === step && loading;
+            const failed  = isTerminal && !success && s === step && s !== "2fa";
+            return (
+              <div key={s} className={`flex items-center gap-3 rounded-xl px-3 py-2 text-xs transition-colors
+                ${active  ? "bg-fuchsia-500/10 border border-fuchsia-500/20" :
+                  done    ? "bg-emerald-500/10 border border-emerald-500/15" :
+                  failed  ? "bg-red-500/10 border border-red-500/15" :
+                  (isTerminal && !success && s === "2fa" && step === "2fa")
+                          ? "bg-amber-500/10 border border-amber-500/20" :
+                            "border border-white/5 bg-white/[0.02]"}`}>
+                <span className="w-4 h-4 flex items-center justify-center shrink-0">
+                  {done   ? <svg className="h-3.5 w-3.5 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/></svg>
+                  : active ? <Spinner sm />
+                  : failed  ? <svg className="h-3.5 w-3.5 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12"/></svg>
+                  : (isTerminal && s === "2fa" && step === "2fa") ? <svg className="h-3.5 w-3.5 text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+                  : <span className="h-1.5 w-1.5 rounded-full bg-white/20" />}
+                </span>
+                <span className={
+                  done ? "text-emerald-300"
+                  : active ? "text-fuchsia-300"
+                  : failed ? "text-red-300"
+                  : (isTerminal && s === "2fa" && step === "2fa") ? "text-amber-300"
+                  : "text-slate-500"
+                }>
+                  {STEP_LABELS[s] ?? s}
+                </span>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Result message */}
+        {isTerminal && step !== "2fa" && (
+          <div className={`rounded-xl border px-4 py-3 text-xs ${success
+            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-300"
+            : "border-red-500/20 bg-red-500/10 text-red-300"}`}>
+            {result!.message}
+            {result!.uid && <span className="ml-2 text-white font-mono">UID: {result!.uid}</span>}
+          </div>
+        )}
+
+        {/* 2FA nudge */}
+        {isTerminal && step === "2fa" && (
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/10 px-4 py-3 text-xs text-amber-300">
+            Tài khoản yêu cầu xác thực 2FA. Nhấn bên dưới để nhập mã OTP.
+          </div>
+        )}
+
+        <div className="flex gap-2">
+          <button onClick={onClose}
+            className="flex-1 rounded-xl border border-white/10 py-2.5 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
+            {isTerminal ? "Đóng" : "Hủy"}
+          </button>
+          {isTerminal && success && (
+            <button onClick={() => onDone(result!)}
+              className="flex-1 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 py-2.5 text-sm font-semibold text-white hover:opacity-90 transition-opacity">
+              Hoàn tất
+            </button>
+          )}
+          {isTerminal && step === "2fa" && account && (
+            <button onClick={() => setShow2FA(true)}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 py-2.5 text-sm font-medium text-amber-300 hover:bg-amber-500/15 transition-colors">
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/>
+              </svg>
+              Nhập mã 2FA
+            </button>
+          )}
+          {isTerminal && !success && step !== "2fa" && (
+            <button onClick={run} disabled={loading}
+              className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-fuchsia-500/30 bg-fuchsia-500/10 py-2.5 text-sm font-medium text-fuchsia-300 hover:bg-fuchsia-500/15 transition-colors disabled:opacity-40">
+              {loading && <Spinner />}
+              Thử lại
+            </button>
+          )}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
 // ── Account Form Modal ─────────────────────────────────────────────────────────
 interface FormData {
   uid: string;
   name: string;
   email: string;
   phone: string;
+  password: string;
   account_type: FbAccountType;
   cookie: string;
   user_agent: string;
@@ -248,7 +423,7 @@ interface FormData {
 }
 
 const EMPTY_FORM: FormData = {
-  uid: "", name: "", email: "", phone: "",
+  uid: "", name: "", email: "", phone: "", password: "",
   account_type: "via", cookie: "", user_agent: "", two_fa_secret: "",
 };
 
@@ -259,25 +434,34 @@ function AccountFormModal({ account, onClose, onDone }: {
 }) {
   const isEdit = !!account;
   const [form,    setForm]    = useState<FormData>(account ? {
-    uid:           account.uid,
+    uid:           account.uid ?? "",
     name:          account.name,
     email:         account.email ?? "",
     phone:         account.phone ?? "",
+    password:      "",
     account_type:  account.account_type,
     cookie:        account.cookie ?? "",
     user_agent:    account.user_agent ?? "",
     two_fa_secret: account.two_fa_secret ?? "",
   } : EMPTY_FORM);
-  const [touched, setTouched] = useState<Partial<Record<keyof FormData, boolean>>>({});
-  const [saving,  setSaving]  = useState(false);
-  const [apiErr,  setApiErr]  = useState<string | null>(null);
-  const [show2FA, setShow2FA] = useState(false);
-  const [created, setCreated] = useState<FbAccount | null>(null);
+  const [touched,      setTouched]      = useState<Partial<Record<keyof FormData, boolean>>>({});
+  const [saving,       setSaving]       = useState(false);
+  const [apiErr,       setApiErr]       = useState<string | null>(null);
+  const [loginAccount, setLoginAccount] = useState<FbAccount | null>(null);
+  const [showPw,       setShowPw]       = useState(false);
 
   const errors = useMemo(() => {
     const e: Partial<Record<keyof FormData, string>> = {};
     if (touched.uid  && !form.uid.trim())  e.uid  = "UID không được trống.";
     if (touched.name && !form.name.trim()) e.name = "Tên không được trống.";
+    if (touched.email && form.email.trim()) {
+      const emailRx = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRx.test(form.email.trim())) e.email = "Email không hợp lệ.";
+    }
+    if (touched.phone && form.phone.trim()) {
+      const phoneRx = /^(\+?\d{1,4}[\s-]?)?(\(?\d{2,4}\)?[\s-]?)?\d{3,4}[\s-]?\d{3,4}$/;
+      if (!phoneRx.test(form.phone.trim())) e.phone = "Số điện thoại không hợp lệ.";
+    }
     return e;
   }, [form, touched]);
 
@@ -302,6 +486,7 @@ function AccountFormModal({ account, onClose, onDone }: {
           name:          form.name || undefined,
           email:         form.email || undefined,
           phone:         form.phone || undefined,
+          password:      form.password || undefined,
           account_type:  form.account_type,
           cookie:        form.cookie || undefined,
           user_agent:    form.user_agent || undefined,
@@ -311,18 +496,18 @@ function AccountFormModal({ account, onClose, onDone }: {
         onDone(result, false);
       } else {
         const payload: CreateFbAccountPayload = {
-          uid:           form.uid,
+          uid:           form.uid || undefined,
           name:          form.name,
           email:         form.email || undefined,
           phone:         form.phone || undefined,
+          password:      form.password || undefined,
           account_type:  form.account_type,
           cookie:        form.cookie || undefined,
           user_agent:    form.user_agent || undefined,
           two_fa_secret: form.two_fa_secret || undefined,
         };
         result = await fbAccountAPI.create(payload);
-        setCreated(result);
-        setShow2FA(true);
+        setLoginAccount(result);
       }
     } catch (err: unknown) {
       setApiErr(err instanceof Error ? err.message : "Có lỗi xảy ra.");
@@ -331,12 +516,23 @@ function AccountFormModal({ account, onClose, onDone }: {
     }
   }
 
-  if (show2FA && created) {
+
+  if (loginAccount) {
     return (
-      <TwoFAModal
-        account={created}
-        onClose={() => { onDone(created, true); }}
-        onVerified={acc => { onDone(acc, true); }}
+      <LoginProgressModal
+        accountId={loginAccount.id}
+        account={loginAccount}
+        onClose={() => setLoginAccount(null)}
+        onDone={(result) => {
+          setLoginAccount(null);
+          const merged: FbAccount = {
+            ...loginAccount,
+            status: "active",
+            uid:    result.uid    ?? loginAccount.uid,
+            name:   result.name   ?? loginAccount.name,
+          };
+          onDone(merged, !isEdit);
+        }}
       />
     );
   }
@@ -375,17 +571,43 @@ function AccountFormModal({ account, onClose, onDone }: {
           </div>
         </div>
 
-        {/* Row 2: email + phone + type */}
-        <div className="grid grid-cols-3 gap-3">
+        {/* Row 2: email + password + phone + type */}
+        <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Email</label>
-            <input type="email" value={form.email} placeholder="user@email.com"
-              onChange={e => set("email", e.target.value)} className={fieldCls()} />
+            <input type="text" value={form.email} placeholder="user@email.com"
+              onChange={e => set("email", e.target.value)}
+              onBlur={() => touch("email")}
+              className={fieldCls(!!errors.email)} />
+            {errors.email && <p className="mt-1 text-xs text-red-400">{errors.email}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-400 mb-1.5">Mật khẩu</label>
+            <div className="relative">
+              <input
+                type={showPw ? "text" : "password"}
+                value={form.password}
+                placeholder="••••••••"
+                onChange={e => set("password", e.target.value)}
+                className={`${fieldCls()} pr-9`}
+              />
+              <button type="button" tabIndex={-1}
+                onClick={() => setShowPw(p => !p)}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300 transition-colors">
+                {showPw
+                  ? <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/></svg>
+                  : <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 12a3 3 0 11-6 0 3 3 0 016 0zM2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+                }
+              </button>
+            </div>
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Số điện thoại</label>
             <input value={form.phone} placeholder="0912345678"
-              onChange={e => set("phone", e.target.value)} className={fieldCls()} />
+              onChange={e => set("phone", e.target.value)}
+              onBlur={() => touch("phone")}
+              className={fieldCls(!!errors.phone)} />
+            {errors.phone && <p className="mt-1 text-xs text-red-400">{errors.phone}</p>}
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-400 mb-1.5">Loại tài khoản</label>
@@ -426,16 +648,46 @@ function AccountFormModal({ account, onClose, onDone }: {
             onChange={e => set("user_agent", e.target.value)} className={fieldCls()} />
         </div>
 
-        <div className="flex items-center justify-end gap-3 pt-1">
+        <div className="flex items-center justify-between gap-3 pt-1">
           <button type="button" onClick={onClose}
             className="rounded-xl border border-white/10 px-4 py-2 text-sm text-slate-400 hover:bg-white/5 hover:text-white transition-colors">
             Hủy
           </button>
-          <button type="submit" disabled={saving}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-60">
-            {saving && <Spinner />}
-            {isEdit ? "Lưu thay đổi" : "Thêm & Xác thực 2FA"}
-          </button>
+          <div className="flex items-center gap-2">
+            {isEdit && form.email && form.password && (
+              <button type="button"
+                onClick={async () => {
+                  setSaving(true);
+                  try {
+                    const payload: UpdateFbAccountPayload = {
+                      email:    form.email || undefined,
+                      password: form.password || undefined,
+                    };
+                    const saved = await fbAccountAPI.update(account!.id, payload);
+                    setLoginAccount(saved);
+                  } catch (e: unknown) {
+                    setApiErr(e instanceof Error ? e.message : "Lỗi lưu thông tin.");
+                  } finally {
+                    setSaving(false);
+                  }
+                }}
+                disabled={saving}
+                className="flex items-center gap-2 rounded-xl border border-sky-500/30 bg-sky-500/10 px-4 py-2 text-sm font-medium text-sky-300 hover:bg-sky-500/15 transition-colors disabled:opacity-40">
+                {saving ? <Spinner /> : (
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                      d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+                  </svg>
+                )}
+                Login Playwright
+              </button>
+            )}
+            <button type="submit" disabled={saving}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-fuchsia-500 to-indigo-500 px-5 py-2 text-sm font-semibold text-white hover:opacity-90 transition-opacity disabled:opacity-60">
+              {saving && <Spinner />}
+              {isEdit ? "Lưu thay đổi" : "Thêm tài khoản"}
+            </button>
+          </div>
         </div>
       </form>
     </Modal>
@@ -652,9 +904,10 @@ export default function ApiSettingsPage() {
     setItems(p => p.filter(x => x.id !== id));
     setTotal(t => Math.max(0, t - 1));
   }
-  function on2FAVerified(acc: FbAccount) {
+  function on2FAVerified(result: LoginResult) {
+    const acc = twoFAAccount;
     setTwoFAAccount(null); setDetailAccount(null);
-    setItems(p => p.map(x => x.id === acc.id ? acc : x));
+    if (acc) setItems(p => p.map(x => x.id === acc.id ? { ...x, has_2fa: true, status: "active", uid: result.uid ?? x.uid, name: result.name ?? x.name } : x));
   }
 
   const pageRange = useMemo(() => {
